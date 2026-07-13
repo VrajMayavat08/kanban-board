@@ -1,5 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import {
+  DndContext,
+  useDraggable,
+  useDroppable,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
 import api from '../api/axios';
 
 function Board() {
@@ -11,6 +19,11 @@ function Board() {
   const [cards, setCards] = useState([]);
   const [loading, setLoading] = useState(true);
   const [newListTitle, setNewListTitle] = useState('');
+
+  // Require a small drag distance before activating, so clicks still work
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
+  );
 
   useEffect(() => {
     fetchBoard();
@@ -61,6 +74,38 @@ function Board() {
     }
   };
 
+  // Called when a card is dropped
+  const handleDragEnd = async (event) => {
+    const { active, over } = event;
+    if (!over) return;
+
+    const cardId = active.id;
+    const targetListId = over.id;
+
+    const card = cards.find((c) => c._id === cardId);
+    if (!card || card.list === targetListId) return; // no change
+
+    const newPosition = cards.filter((c) => c.list === targetListId).length;
+
+    // Optimistic update — update UI immediately
+    setCards((prev) =>
+      prev.map((c) =>
+        c._id === cardId ? { ...c, list: targetListId, position: newPosition } : c
+      )
+    );
+
+    // Persist to backend
+    try {
+      await api.put(`/cards/${cardId}`, {
+        list: targetListId,
+        position: newPosition,
+      });
+    } catch (err) {
+      console.error('Failed to move card', err);
+      fetchBoard(); // revert by refetching if it failed
+    }
+  };
+
   if (loading) return <p className="p-8 text-[var(--color-text-secondary)]">Loading...</p>;
   if (!board) return <p className="p-8 text-[var(--color-text-secondary)]">Board not found.</p>;
 
@@ -76,34 +121,36 @@ function Board() {
         <h1 className="font-[var(--font-display)] text-xl">{board.title}</h1>
       </div>
 
-      <div className="flex gap-4 items-start overflow-x-auto pb-4">
-        {lists.map((list) => (
-          <ListColumn
-            key={list._id}
-            list={list}
-            cards={cards.filter((c) => c.list === list._id)}
-            onAddCard={handleAddCard}
-          />
-        ))}
+      <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+        <div className="flex gap-4 items-start overflow-x-auto pb-4">
+          {lists.map((list) => (
+            <ListColumn
+              key={list._id}
+              list={list}
+              cards={cards.filter((c) => c.list === list._id)}
+              onAddCard={handleAddCard}
+            />
+          ))}
 
-        {/* Add new list */}
-        <form onSubmit={handleAddList} className="glass-card rounded-xl p-3 w-64 flex-shrink-0">
-          <input
-            type="text"
-            placeholder="+ Add a list"
-            value={newListTitle}
-            onChange={(e) => setNewListTitle(e.target.value)}
-            className="w-full bg-transparent text-sm outline-none placeholder:text-[var(--color-text-secondary)]"
-          />
-        </form>
-      </div>
+          <form onSubmit={handleAddList} className="glass-card rounded-xl p-3 w-64 flex-shrink-0">
+            <input
+              type="text"
+              placeholder="+ Add a list"
+              value={newListTitle}
+              onChange={(e) => setNewListTitle(e.target.value)}
+              className="w-full bg-transparent text-sm outline-none placeholder:text-[var(--color-text-secondary)]"
+            />
+          </form>
+        </div>
+      </DndContext>
     </div>
   );
 }
 
-// List column component
+// Droppable list column
 function ListColumn({ list, cards, onAddCard }) {
   const [newCardTitle, setNewCardTitle] = useState('');
+  const { setNodeRef, isOver } = useDroppable({ id: list._id });
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -112,20 +159,20 @@ function ListColumn({ list, cards, onAddCard }) {
   };
 
   return (
-    <div className="glass-card rounded-xl p-3 w-64 flex-shrink-0">
+    <div
+      ref={setNodeRef}
+      className={`glass-card rounded-xl p-3 w-64 flex-shrink-0 transition-colors ${
+        isOver ? 'border-[var(--color-violet)]' : ''
+      }`}
+    >
       <div className="flex justify-between items-center mb-3 px-1">
         <p className="text-sm font-medium">{list.title}</p>
         <span className="text-xs text-[var(--color-text-secondary)]">{cards.length}</span>
       </div>
 
-      <div className="flex flex-col gap-2 mb-3">
+      <div className="flex flex-col gap-2 mb-3 min-h-[40px]">
         {cards.map((card) => (
-          <div
-            key={card._id}
-            className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm"
-          >
-            {card.title}
-          </div>
+          <DraggableCard key={card._id} card={card} />
         ))}
       </div>
 
@@ -138,6 +185,34 @@ function ListColumn({ list, cards, onAddCard }) {
           className="w-full bg-transparent text-xs outline-none placeholder:text-[var(--color-text-secondary)] px-1 py-1"
         />
       </form>
+    </div>
+  );
+}
+
+// Draggable card
+function DraggableCard({ card }) {
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+    id: card._id,
+  });
+
+  const style = transform
+    ? {
+        transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
+        zIndex: 50,
+      }
+    : undefined;
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...listeners}
+      {...attributes}
+      className={`bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm cursor-grab active:cursor-grabbing ${
+        isDragging ? 'opacity-50' : ''
+      }`}
+    >
+      {card.title}
     </div>
   );
 }
