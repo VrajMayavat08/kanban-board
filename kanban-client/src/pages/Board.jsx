@@ -9,6 +9,7 @@ import {
   useSensors,
 } from '@dnd-kit/core';
 import api from '../api/axios';
+import socket from '../api/socket';
 
 function Board() {
   const { id } = useParams();
@@ -28,6 +29,43 @@ function Board() {
   useEffect(() => {
     fetchBoard();
   }, [id]);
+
+  useEffect(() => {
+  // Connect and join this board's room
+  socket.connect();
+  socket.emit('joinBoard', id);
+
+  // Listen for changes from other users
+  socket.on('cardCreated', (card) => {
+    setCards((prev) => {
+      // Guard against duplicates
+      if (prev.some((c) => c._id === card._id)) return prev;
+      return [...prev, card];
+    });
+  });
+
+  socket.on('cardMoved', (movedCard) => {
+    setCards((prev) =>
+      prev.map((c) => (c._id === movedCard._id ? movedCard : c))
+    );
+  });
+
+  socket.on('listCreated', (list) => {
+    setLists((prev) => {
+      if (prev.some((l) => l._id === list._id)) return prev;
+      return [...prev, list];
+    });
+  });
+
+  // Cleanup when leaving the board
+  return () => {
+    socket.emit('leaveBoard', id);
+    socket.off('cardCreated');
+    socket.off('cardMoved');
+    socket.off('listCreated');
+    socket.disconnect();
+  };
+}, [id]);
 
   const fetchBoard = async () => {
     try {
@@ -52,6 +90,7 @@ function Board() {
         position: lists.length,
       });
       setLists([...lists, res.data]);
+      socket.emit('listCreated', { boardId: id, list: res.data });
       setNewListTitle('');
     } catch (err) {
       console.error('Failed to create list', err);
@@ -69,6 +108,7 @@ function Board() {
         position: cardsInList.length,
       });
       setCards([...cards, res.data]);
+      socket.emit('cardCreated', { boardId: id, card: res.data });
     } catch (err) {
       console.error('Failed to create card', err);
     }
@@ -100,6 +140,8 @@ function Board() {
         list: targetListId,
         position: newPosition,
       });
+      const updatedCard = { ...card, list: targetListId, position: newPosition };
+      socket.emit('cardMoved', { boardId: id, card: updatedCard });
     } catch (err) {
       console.error('Failed to move card', err);
       fetchBoard(); // revert by refetching if it failed
