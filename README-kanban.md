@@ -74,9 +74,16 @@ On disconnect, the server reads the board ID and user from `socket.data` (set at
 
 ## Screenshots
 
+Full Kanban board view:
+
 <img width="1919" height="960" alt="image" src="https://github.com/user-attachments/assets/37e637d1-7657-4359-a4be-7ed1a9b72614" />
 <img width="1866" height="806" alt="image" src="https://github.com/user-attachments/assets/e9d274f4-8866-497e-a0be-676b0e26508a" />
+
+Two accounts working together:
+
 <img width="1915" height="651" alt="image" src="https://github.com/user-attachments/assets/fa6d29e6-0b30-40ad-90f2-23ba297e003a" />
+
+Drag and Drop functionality for the Cards
 <img width="936" height="425" alt="image" src="https://github.com/user-attachments/assets/a8e7e09f-76b6-4190-b7fd-4009aace7fd2" />
 
 
