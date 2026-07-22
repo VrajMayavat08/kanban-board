@@ -38,40 +38,61 @@ app.get('/', (req, res) => {
 });
 
 // Socket.io connection handling
+// Tracks who is currently viewing each board: { boardId: { socketId: user } }
+const boardPresence = {};
+
 io.on('connection', (socket) => {
   console.log('A user connected:', socket.id);
 
-  // User joins a specific board's room
-  socket.on('joinBoard', (boardId) => {
+  // User joins a board room, now with identity
+  socket.on('joinBoard', ({ boardId, user }) => {
     socket.join(boardId);
-    console.log(`Socket ${socket.id} joined board ${boardId}`);
+    socket.data.boardId = boardId;
+    socket.data.user = user;
+
+    if (!boardPresence[boardId]) boardPresence[boardId] = {};
+    boardPresence[boardId][socket.id] = user;
+
+    // Broadcast updated presence to everyone in the room (including sender)
+    io.to(boardId).emit('presenceUpdate', Object.values(boardPresence[boardId]));
+    console.log(`${user?.name} joined board ${boardId}`);
   });
 
-  // User leaves a board's room
   socket.on('leaveBoard', (boardId) => {
+    removeFromPresence(socket, boardId);
     socket.leave(boardId);
-    console.log(`Socket ${socket.id} left board ${boardId}`);
   });
 
-  // A card was created — broadcast to others in the board
   socket.on('cardCreated', ({ boardId, card }) => {
     socket.to(boardId).emit('cardCreated', card);
   });
 
-  // A card was moved — broadcast to others in the board
   socket.on('cardMoved', ({ boardId, card }) => {
     socket.to(boardId).emit('cardMoved', card);
   });
 
-  // A list was created — broadcast to others
   socket.on('listCreated', ({ boardId, list }) => {
     socket.to(boardId).emit('listCreated', list);
   });
 
   socket.on('disconnect', () => {
+    const boardId = socket.data.boardId;
+    if (boardId) removeFromPresence(socket, boardId);
     console.log('User disconnected:', socket.id);
   });
 });
+
+// Helper: remove a socket from a board's presence and broadcast the update
+function removeFromPresence(socket, boardId) {
+  if (boardPresence[boardId]) {
+    delete boardPresence[boardId][socket.id];
+    if (Object.keys(boardPresence[boardId]).length === 0) {
+      delete boardPresence[boardId];
+    } else {
+      io.to(boardId).emit('presenceUpdate', Object.values(boardPresence[boardId]));
+    }
+  }
+}
 
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {

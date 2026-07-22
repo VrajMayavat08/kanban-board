@@ -23,6 +23,7 @@ function Board() {
   const [activity, setActivity] = useState([]);
   const [loading, setLoading] = useState(true);
   const [newListTitle, setNewListTitle] = useState('');
+  const [presentUsers, setPresentUsers] = useState([]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
@@ -39,7 +40,7 @@ function Board() {
 
   useEffect(() => {
     socket.connect();
-    socket.emit('joinBoard', id);
+    socket.emit('joinBoard', { boardId: id, user: { _id: user?._id, name: user?.name } });
 
     socket.on('cardCreated', (card) => {
       setCards((prev) => prev.some((c) => c._id === card._id) ? prev : [...prev, card]);
@@ -53,12 +54,16 @@ function Board() {
       setLists((prev) => prev.some((l) => l._id === list._id) ? prev : [...prev, list]);
       logActivity(`New list "${list.title}" created`);
     });
+    socket.on('presenceUpdate', (users) => {
+      setPresentUsers(users);
+    });
 
     return () => {
       socket.emit('leaveBoard', id);
       socket.off('cardCreated');
       socket.off('cardMoved');
       socket.off('listCreated');
+      socket.off('presenceUpdate');
       socket.disconnect();
     };
   }, [id]);
@@ -198,11 +203,13 @@ function Board() {
         {/* Members */}
         <div>
           <p className="font-[var(--font-mono)] text-[10px] uppercase tracking-wider text-[var(--color-text-secondary)] mb-2">Members</p>
-          <div className="flex items-center gap-1.5">
-            <Avatar name={user?.name} size={30} live />
-            <button className="w-[30px] h-[30px] rounded-full border border-dashed border-white/20 text-[var(--color-text-secondary)] text-sm hover:border-white/40 hover:text-[var(--color-text-primary)] transition-colors flex items-center justify-center">
-              +
-            </button>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {presentUsers.map((u, i) => (
+              <Avatar key={u._id + i} name={u.name} size={30} live />
+            ))}
+          <button className="w-[30px] h-[30px] rounded-full border border-dashed border-white/20 text-[var(--color-text-secondary)] text-sm hover:border-white/40 hover:text-[var(--color-text-primary)] transition-colors flex items-center justify-center">
+          +
+          </button>
           </div>
         </div>
 
@@ -245,7 +252,16 @@ function Board() {
               {lists.length} lists · {cards.length} cards
             </span>
             <div className="flex -space-x-2">
-              <Avatar name={user?.name} size={30} live />
+            {presentUsers.slice(0, 4).map((u, i) => (
+            <div key={u._id + i} className="ring-2 ring-[var(--color-bg-deep)] rounded-full">
+              <Avatar name={u.name} size={30} live />
+            </div>
+              ))}
+            {presentUsers.length > 4 && (
+             <div className="w-[30px] h-[30px] rounded-full bg-white/10 ring-2 ring-[var(--color-bg-deep)] flex items-center justify-center text-[10px] text-[var(--color-text-secondary)]">
+             +{presentUsers.length - 4}
+             </div>
+             )}
             </div>
           </div>
         </div>
