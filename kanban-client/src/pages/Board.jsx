@@ -28,6 +28,7 @@ function Board() {
   const [presentUsers, setPresentUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [newListTitle, setNewListTitle] = useState('');
+  const [sidebarOpen, setSidebarOpen] = useState(true);
 
   const [showInvite, setShowInvite] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
@@ -289,13 +290,27 @@ function Board() {
       />
 
       {/* ---------- SIDEBAR ---------- */}
-      <aside className="w-64 flex-shrink-0 border-r border-white/8 p-5 flex flex-col gap-6 relative z-10 min-h-screen">
+      <aside className={`${sidebarOpen ? 'w-64' : 'w-14'} flex-shrink-0 border-r border-white/8 p-3 flex flex-col gap-6 relative z-10 min-h-screen transition-all duration-200`}>
+      <div className="flex items-center justify-between gap-2 px-1">
+        {sidebarOpen && (
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-lg bg-[var(--color-teal-dim)] flex items-center justify-center">
-            <span className="w-2.5 h-2.5 rounded-full bg-[var(--color-teal)]" />
+           <span className="w-2.5 h-2.5 rounded-full bg-[var(--color-teal)]" />
           </div>
           <span className="font-[var(--font-display)] font-semibold text-sm">Kanban</span>
         </div>
+      )}
+        <button
+          onClick={() => setSidebarOpen(!sidebarOpen)}
+          className="text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition-colors text-sm px-1"
+          title={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+           >
+          {sidebarOpen ? '«' : '»'}
+        </button>
+      </div>
+
+      {sidebarOpen && (
+      <>
 
         {/* Boards list */}
         <div>
@@ -391,6 +406,8 @@ function Board() {
         >
           Log out
         </button>
+        </>
+        )}
       </aside>
 
       {/* ---------- MAIN ---------- */}
