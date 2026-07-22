@@ -16,7 +16,7 @@ const server = http.createServer(app);
 // Socket.io setup
 const io = new Server(server, {
   cors: {
-    origin: '*', // we'll lock this down before deploying
+    origin: process.env.CLIENT_URL || '*',
     methods: ['GET', 'POST'],
   },
 });
@@ -31,6 +31,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/boards', boardRoutes);
 app.use('/api/lists', listRoutes);
 app.use('/api/cards', cardRoutes);
+app.use(cors({ origin: process.env.CLIENT_URL || '*' }));
 
 // Test route
 app.get('/', (req, res) => {
