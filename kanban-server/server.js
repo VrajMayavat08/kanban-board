@@ -81,6 +81,14 @@ io.on('connection', (socket) => {
     if (boardId) removeFromPresence(socket, boardId);
     console.log('User disconnected:', socket.id);
   });
+
+  socket.on('cardDeleted', ({ boardId, cardId }) => {
+    socket.to(boardId).emit('cardDeleted', cardId);
+  });
+
+  socket.on('listDeleted', ({ boardId, listId }) => {
+    socket.to(boardId).emit('listDeleted', listId);
+  });
 });
 
 // Helper: remove a socket from a board's presence and broadcast the update

@@ -29,7 +29,6 @@ function Board() {
   const [loading, setLoading] = useState(true);
   const [newListTitle, setNewListTitle] = useState('');
 
-  // Invite UI state
   const [showInvite, setShowInvite] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteMsg, setInviteMsg] = useState('');
@@ -56,9 +55,7 @@ function Board() {
       user: { _id: user?._id, name: user?.name },
     });
 
-    socket.on('presenceUpdate', (users) => {
-      setPresentUsers(users);
-    });
+    socket.on('presenceUpdate', (users) => setPresentUsers(users));
 
     socket.on('cardCreated', (card) => {
       setCards((prev) => (prev.some((c) => c._id === card._id) ? prev : [...prev, card]));
@@ -75,12 +72,25 @@ function Board() {
       logActivity(`New list "${list.title}" created`);
     });
 
+    socket.on('cardDeleted', (cardId) => {
+      setCards((prev) => prev.filter((c) => c._id !== cardId));
+      logActivity('A card was deleted');
+    });
+
+    socket.on('listDeleted', (listId) => {
+      setLists((prev) => prev.filter((l) => l._id !== listId));
+      setCards((prev) => prev.filter((c) => c.list !== listId));
+      logActivity('A list was deleted');
+    });
+
     return () => {
       socket.emit('leaveBoard', id);
       socket.off('presenceUpdate');
       socket.off('cardCreated');
       socket.off('cardMoved');
       socket.off('listCreated');
+      socket.off('cardDeleted');
+      socket.off('listDeleted');
       socket.disconnect();
     };
   }, [id]);
@@ -154,7 +164,6 @@ function Board() {
 
     const newPosition = cards.filter((c) => c.list === targetListId).length;
 
-    // Optimistic update
     setCards((prev) =>
       prev.map((c) =>
         c._id === cardId ? { ...c, list: targetListId, position: newPosition } : c
@@ -168,7 +177,46 @@ function Board() {
       socket.emit('cardMoved', { boardId: id, card: updatedCard });
     } catch (err) {
       console.error('Failed to move card', err);
-      fetchBoard(); // revert on failure
+      fetchBoard();
+    }
+  };
+
+  const handleDeleteCard = async (cardId) => {
+    const card = cards.find((c) => c._id === cardId);
+    setCards((prev) => prev.filter((c) => c._id !== cardId));
+    try {
+      await api.delete(`/cards/${cardId}`);
+      logActivity(`You deleted "${card?.title}"`);
+      socket.emit('cardDeleted', { boardId: id, cardId });
+    } catch (err) {
+      console.error('Failed to delete card', err);
+      fetchBoard();
+    }
+  };
+
+  const handleDeleteList = async (listId) => {
+    if (!window.confirm('Delete this list and all its cards?')) return;
+    const list = lists.find((l) => l._id === listId);
+    setLists((prev) => prev.filter((l) => l._id !== listId));
+    setCards((prev) => prev.filter((c) => c.list !== listId));
+    try {
+      await api.delete(`/lists/${listId}`);
+      logActivity(`You deleted list "${list?.title}"`);
+      socket.emit('listDeleted', { boardId: id, listId });
+    } catch (err) {
+      console.error('Failed to delete list', err);
+      fetchBoard();
+    }
+  };
+
+  const handleDeleteBoard = async () => {
+    if (!window.confirm(`Delete "${board.title}" and everything in it? This cannot be undone.`))
+      return;
+    try {
+      await api.delete(`/boards/${id}`);
+      navigate('/boards');
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to delete board');
     }
   };
 
@@ -363,6 +411,12 @@ function Board() {
             <span className="font-[var(--font-mono)] text-xs text-[var(--color-text-secondary)]">
               {lists.length} lists · {cards.length} cards
             </span>
+            <button
+              onClick={handleDeleteBoard}
+              className="text-xs text-[var(--color-text-secondary)] hover:text-[#EC5B87] transition-colors"
+            >
+              Delete board
+            </button>
             <div className="flex -space-x-2">
               {presentUsers.slice(0, 4).map((u, i) => (
                 <div
@@ -392,6 +446,8 @@ function Board() {
                   accent={listAccents[i % listAccents.length]}
                   cards={cards.filter((c) => c.list === list._id)}
                   onAddCard={handleAddCard}
+                  onDeleteCard={handleDeleteCard}
+                  onDeleteList={handleDeleteList}
                 />
               ))}
 
@@ -416,7 +472,7 @@ function Board() {
 }
 
 /* ---------- List column (droppable) ---------- */
-function ListColumn({ list, cards, accent, onAddCard }) {
+function ListColumn({ list, cards, accent, onAddCard, onDeleteCard, onDeleteList }) {
   const [newCardTitle, setNewCardTitle] = useState('');
   const { setNodeRef, isOver } = useDroppable({ id: list._id });
 
@@ -433,7 +489,6 @@ function ListColumn({ list, cards, accent, onAddCard }) {
         isOver ? 'ring-1 ring-white/25' : ''
       }`}
     >
-      {/* Accent top bar */}
       <div
         className="h-1"
         style={{ background: `linear-gradient(90deg, ${accent}, transparent)` }}
@@ -445,9 +500,18 @@ function ListColumn({ list, cards, accent, onAddCard }) {
             <span className="w-2 h-2 rounded-full" style={{ background: accent }} />
             <p className="text-sm font-medium">{list.title}</p>
           </div>
-          <span className="font-[var(--font-mono)] text-xs text-[var(--color-text-secondary)] bg-white/5 px-2 py-0.5 rounded-full">
-            {cards.length}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="font-[var(--font-mono)] text-xs text-[var(--color-text-secondary)] bg-white/5 px-2 py-0.5 rounded-full">
+              {cards.length}
+            </span>
+            <button
+              onClick={() => onDeleteList(list._id)}
+              className="text-[var(--color-text-secondary)] hover:text-[#EC5B87] transition-colors text-xs"
+              title="Delete list"
+            >
+              ✕
+            </button>
+          </div>
         </div>
 
         <div className="flex flex-col gap-2 mb-2 min-h-[48px]">
@@ -463,7 +527,12 @@ function ListColumn({ list, cards, accent, onAddCard }) {
             </div>
           )}
           {cards.map((card) => (
-            <DraggableCard key={card._id} card={card} accent={accent} />
+            <DraggableCard
+              key={card._id}
+              card={card}
+              accent={accent}
+              onDelete={onDeleteCard}
+            />
           ))}
         </div>
 
@@ -482,7 +551,7 @@ function ListColumn({ list, cards, accent, onAddCard }) {
 }
 
 /* ---------- Draggable card ---------- */
-function DraggableCard({ card, accent }) {
+function DraggableCard({ card, accent, onDelete }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: card._id,
   });
@@ -498,9 +567,7 @@ function DraggableCard({ card, accent }) {
     <div
       ref={setNodeRef}
       style={style}
-      {...listeners}
-      {...attributes}
-      className={`card-item card-enter rounded-lg px-3 py-2.5 text-sm cursor-grab active:cursor-grabbing ${
+      className={`card-item card-enter rounded-lg px-3 py-2.5 text-sm group relative ${
         isDragging ? 'opacity-50' : ''
       }`}
     >
@@ -509,7 +576,20 @@ function DraggableCard({ card, accent }) {
           className="w-1 self-stretch rounded-full flex-shrink-0"
           style={{ background: accent, minHeight: '16px' }}
         />
-        <span>{card.title}</span>
+        <span
+          {...listeners}
+          {...attributes}
+          className="flex-1 cursor-grab active:cursor-grabbing"
+        >
+          {card.title}
+        </span>
+        <button
+          onClick={() => onDelete(card._id)}
+          className="opacity-0 group-hover:opacity-100 text-[var(--color-text-secondary)] hover:text-[#EC5B87] transition-all text-xs flex-shrink-0"
+          title="Delete card"
+        >
+          ✕
+        </button>
       </div>
     </div>
   );

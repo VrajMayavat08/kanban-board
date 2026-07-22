@@ -82,5 +82,23 @@ const addMember = async (req, res) => {
   }
 };
 
-module.exports = { getBoards, createBoard, getBoardById };
-module.exports = { getBoards, createBoard, getBoardById, addMember };
+const deleteBoard = async (req, res) => {
+  try {
+    const board = await Board.findById(req.params.id);
+    if (!board) return res.status(404).json({ message: 'Board not found' });
+
+    if (board.owner.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'Only the board owner can delete it' });
+    }
+
+    await Card.deleteMany({ board: board._id });
+    await List.deleteMany({ board: board._id });
+    await Board.findByIdAndDelete(req.params.id);
+
+    res.json({ message: 'Board deleted' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+module.exports = { getBoards, createBoard, getBoardById, addMember, deleteBoard };
